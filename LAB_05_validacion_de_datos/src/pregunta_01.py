@@ -1,3 +1,8 @@
+import json
+from pathlib import Path
+
+import pandas as pd
+
 def main():
     """
     Antes de limpiar o analizar un conjunto de datos, un analista debe
@@ -48,4 +53,63 @@ def main():
         }
     """
 
-    raise NotImplementedError
+    columnas_requeridas = [
+        "supplier_id",
+        "supplier",
+        "country",
+        "city",
+        "purchase_date",
+        "amount",
+        "discount",
+        "weight",
+        "units",
+        "unit_price",
+        "contact_email",
+    ]
+
+    # Se lee todo como texto para no alterar ningun valor del archivo.
+    df = pd.read_csv(
+        "data/ventas.csv.gz",
+        dtype=str,
+        keep_default_na=False,
+        encoding="utf-8-sig",
+    )
+    df.columns = [
+        columna.replace("\ufeff", "").strip().lower().replace(" ", "_")
+        for columna in df.columns
+    ]
+
+    faltantes = df.apply(lambda columna: columna.str.strip().isin(["", "N/A"]))
+
+    correos = df["contact_email"].str.strip()
+    correo_valido = correos.str.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s.]+")
+    correos_invalidos = ~correo_valido & ~faltantes["contact_email"]
+
+    unidades = pd.to_numeric(df["units"].str.strip(), errors="coerce").dropna()
+    unidades_invalidas = (unidades <= 0) | (unidades % 1 != 0)
+
+    reporte = {
+        "row_count": int(len(df)),
+        "column_count": int(df.shape[1]),
+        "missing_required_columns": sorted(
+            set(columnas_requeridas) - set(df.columns)
+        ),
+        "unexpected_columns": sorted(set(df.columns) - set(columnas_requeridas)),
+        "duplicate_row_count": int(df.duplicated().sum()),
+        "duplicate_supplier_id_row_count": int(
+            df["supplier_id"].str.strip().duplicated(keep=False).sum()
+        ),
+        "missing_value_count_by_column": {
+            columna: int(cantidad) for columna, cantidad in faltantes.sum().items()
+        },
+        "invalid_email_count": int(correos_invalidos.sum()),
+        "invalid_unit_count": int(unidades_invalidas.sum()),
+        "country_values": sorted(df["country"].unique().tolist()),
+    }
+
+    salida = Path("submission")
+    salida.mkdir(parents=True, exist_ok=True)
+    with open(salida / "data_quality_report.json", "w", encoding="utf-8") as archivo:
+        json.dump(reporte, archivo, ensure_ascii=False, indent=2)
+
+    return reporte
