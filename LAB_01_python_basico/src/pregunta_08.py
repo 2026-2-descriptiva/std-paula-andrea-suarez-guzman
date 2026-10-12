@@ -1,12 +1,7 @@
+from ._utils import leer_registros
+
 def pregunta_08():
-    """
-    Repita la pregunta 7, pero ahora cada lista de letras debe contener cada
-    letra una sola vez y estar ordenada alfabéticamente. Retorne una lista de
-    tuplas `(valor, letras)` ordenada por el valor.
-
-    Ejemplo del formato de la respuesta:
-
-        [(0, ["C"]), (1, ["B", "E"]), (2, ["A", "E"]), ...]
-    """
-
-    raise NotImplementedError
+    letras = {}
+    for registro in leer_registros():
+        letras.setdefault(registro["value"], set()).add(registro["letter"])
+    return [(valor, sorted(conjunto)) for valor, conjunto in sorted(letras.items())]

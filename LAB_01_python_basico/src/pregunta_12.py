@@ -1,12 +1,9 @@
+from ._utils import leer_registros
+
 def pregunta_12():
-    """
-    Para cada letra de la primera columna (`letter`), sume todos los valores
-    numéricos de los pares `clave:valor` de la quinta columna (`metrics`).
-    Retorne un diccionario `{letra: suma}` con las letras en orden alfabético.
-
-    Ejemplo del formato de la respuesta:
-
-        {"A": 177, "B": 187, "C": 114, ...}
-    """
-
-    raise NotImplementedError
+    sumas = {}
+    for registro in leer_registros():
+        letra = registro["letter"]
+        total = sum(valor for _, valor in registro["metrics"])
+        sumas[letra] = sumas.get(letra, 0) + total
+    return dict(sorted(sumas.items()))

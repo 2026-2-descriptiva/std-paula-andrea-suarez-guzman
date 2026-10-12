@@ -1,12 +1,8 @@
+from ._utils import leer_registros
+
 def pregunta_03():
-    """
-    Sume los valores de la segunda columna (`value`) para cada letra de la
-    primera columna (`letter`). Retorne una lista de tuplas `(letra, suma)`
-    ordenada alfabéticamente por la letra.
-
-    Ejemplo del formato de la respuesta:
-
-        [("A", 53), ("B", 36), ("C", 27), ...]
-    """
-
-    raise NotImplementedError
+    sumas = {}
+    for registro in leer_registros():
+        letra = registro["letter"]
+        sumas[letra] = sumas.get(letra, 0) + registro["value"]
+    return sorted(sumas.items())
