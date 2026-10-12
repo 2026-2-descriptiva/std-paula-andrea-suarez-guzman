@@ -1,29 +1,32 @@
+import re
+import pandas as pd
+
 def pregunta_01():
-    """
-    El archivo `data/clusters_report.txt` es un reporte de clústeres de
-    palabras clave pensado para ser leído por una persona, no por un programa:
-    los encabezados ocupan varias líneas, las columnas están alineadas con
-    espacios y la lista de palabras clave de un clúster continúa en las líneas
-    siguientes.
+    with open("data/clusters_report.txt", encoding="utf-8") as archivo:
+        lineas = archivo.readlines()
 
-    Su tarea es convertir ese reporte en un DataFrame de Pandas con una fila
-    por clúster y las columnas:
+    # Las primeras 4 lineas son el encabezado y la linea de guiones.
+    registros = []
+    for linea in lineas[4:]:
+        if not linea.strip():
+            continue
+        if re.match(r"^\s*\d+\s", linea):
+            cluster, cantidad, porcentaje, _, palabras = linea.split(maxsplit=4)
+            registros.append(
+                {
+                    "cluster": int(cluster),
+                    "cantidad_de_palabras_clave": int(cantidad),
+                    "porcentaje_de_palabras_clave": float(porcentaje.replace(",", ".")),
+                    "principales_palabras_clave": palabras,
+                }
+            )
+        else:
+            registros[-1]["principales_palabras_clave"] += " " + linea
 
-    - `cluster`: número del clúster, como entero.
-    - `cantidad_de_palabras_clave`: como entero.
-    - `porcentaje_de_palabras_clave`: como número decimal; por ejemplo, el
-      texto `15,9 %` debe quedar como `15.9`.
-    - `principales_palabras_clave`: todas las palabras clave del clúster en un
-      solo texto, separadas por una coma y un único espacio.
+    for registro in registros:
+        texto = re.sub(r"\s+", " ", registro["principales_palabras_clave"])
+        texto = texto.strip().rstrip(".")
+        palabras = [palabra.strip() for palabra in texto.split(",")]
+        registro["principales_palabras_clave"] = ", ".join(palabras)
 
-    Retorne el DataFrame.
-
-    Ejemplo del formato de la respuesta (se omite la última columna):
-
-           cluster  cantidad_de_palabras_clave  porcentaje_de_palabras_clave
-        0        1                         105                          15.9
-        1        2                         102                          15.4
-        ...
-    """
-
-    raise NotImplementedError
+    return pd.DataFrame(registros)
