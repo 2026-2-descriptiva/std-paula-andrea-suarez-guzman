@@ -1,3 +1,8 @@
+import json
+from pathlib import Path
+
+import pandas as pd
+
 def pregunta_01():
     """
     Una aseguradora quiere publicar datos de sus afiliados para que un grupo
@@ -80,4 +85,80 @@ def pregunta_01():
         }
     """
 
-    raise NotImplementedError
+    df = pd.read_csv("data/insurance.csv.gz")
+    k = 5
+
+    # Riesgo con los cuasi-identificadores originales, sin generalizar.
+    originales = ["age", "sex", "bmi", "children", "region"]
+    tamanos_originales = df.groupby(originales)["age"].transform("size")
+
+    # Generalizacion de los cuasi-identificadores.
+    df["age_group"] = pd.cut(
+        df["age"],
+        bins=[0, 29, 39, 49, 64],
+        labels=["18-29", "30-39", "40-49", "50-64"],
+    ).astype(str)
+    df["bmi_group"] = pd.cut(
+        df["bmi"],
+        bins=[0, 18.5, 25, 30, float("inf")],
+        labels=["bajo peso", "normal", "sobrepeso", "obesidad"],
+        right=False,
+    ).astype(str)
+    df["children_group"] = pd.cut(
+        df["children"],
+        bins=[-1, 0, 2, float("inf")],
+        labels=["0", "1-2", "3+"],
+    ).astype(str)
+
+    esquemas = {
+        "with_children": ["age_group", "sex", "bmi_group", "children_group", "region"],
+        "without_children": ["age_group", "sex", "bmi_group", "region"],
+    }
+
+    resultados = {}
+    publicados = {}
+    for nombre, columnas in esquemas.items():
+        tamanos = df.groupby(columnas)["age"].transform("size")
+        publicado = df[tamanos >= k]
+
+        # Clases publicadas donde todos fuman o ninguno fuma.
+        diversidad = publicado.groupby(columnas)["smoker"].agg(["nunique", "size"])
+        sin_diversidad = diversidad[diversidad["nunique"] == 1]
+
+        resultados[nombre] = {
+            "quasi_identifiers": columnas,
+            "equivalence_classes": int(df.groupby(columnas).ngroups),
+            "k_before_suppression": int(tamanos.min()),
+            "suppressed_records": int((tamanos < k).sum()),
+            "published_records": int(len(publicado)),
+            "published_classes": int(publicado.groupby(columnas).ngroups),
+            "classes_without_smoker_diversity": int(len(sin_diversidad)),
+            "records_without_smoker_diversity": int(sin_diversidad["size"].sum()),
+        }
+        publicados[nombre] = publicado
+
+    seleccionado = min(resultados, key=lambda n: resultados[n]["suppressed_records"])
+    publicado = publicados[seleccionado]
+
+    reporte = {
+        "original_k": int(tamanos_originales.min()),
+        "original_unique_records": int((tamanos_originales == 1).sum()),
+        "schemes": resultados,
+        "selected_scheme": seleccionado,
+        "mean_charges_original": float(df["charges"].mean()),
+        "mean_charges_published": float(publicado["charges"].mean()),
+        "smoker_rate_original": float((df["smoker"] == "yes").mean()),
+        "smoker_rate_published": float((publicado["smoker"] == "yes").mean()),
+    }
+
+    salida = Path("submission")
+    salida.mkdir(parents=True, exist_ok=True)
+    with open(salida / "privacy_report.json", "w", encoding="utf-8") as archivo:
+        json.dump(reporte, archivo, ensure_ascii=False, indent=2)
+
+    columnas_publicadas = esquemas[seleccionado] + ["smoker", "charges"]
+    publicado[columnas_publicadas].to_csv(
+        salida / "insurance_published.csv", index=False
+    )
+
+    return reporte
