@@ -20,4 +20,5 @@
 --  0  15137.63
 --
 --  Escriba su consulta debajo de esta línea.
---
+-- 
+SELECT SUM(c12) FROM tbl1;
