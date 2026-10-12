@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import numpy as np
 import pandas as pd
 
 
@@ -61,4 +64,102 @@ def pregunta_01() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         ...
     """
 
-    raise NotImplementedError
+    canales = []
+    for canal in ["letter", "web"]:
+        datos = pd.read_csv(f"data/historical_requests_{canal}.csv.gz")
+        datos = datos.drop_duplicates()
+        datos["channel"] = canal
+        canales.append(datos)
+    df = pd.concat(canales, ignore_index=True)
+
+    df["in_date"] = pd.to_datetime(df["in_date"])
+    df["out_date"] = pd.to_datetime(df["out_date"])
+    df["answered"] = df["out_date"].notna()
+    df["year"] = df["in_date"].dt.year
+
+    # Dias calendario y dias habiles (lunes a viernes) despues de la entrada,
+    # hasta la fecha de respuesta incluida. Las pendientes quedan como NaN.
+    respondidas = df["answered"]
+    un_dia = np.timedelta64(1, "D")
+    df["calendar_days"] = (df["out_date"] - df["in_date"]).dt.days
+    df["business_days"] = np.nan
+    df.loc[respondidas, "business_days"] = np.busday_count(
+        df.loc[respondidas, "in_date"].to_numpy().astype("datetime64[D]") + un_dia,
+        df.loc[respondidas, "out_date"].to_numpy().astype("datetime64[D]") + un_dia,
+    )
+
+    # Una pendiente no cumple el plazo (NaN <= 15 es False).
+    df["on_time"] = df["business_days"] <= 15
+
+    # 1. Resumen por canal.
+    channel_summary = (
+        df.groupby("channel")
+        .agg(
+            requests=("channel", "size"),
+            answered=("answered", "sum"),
+            median_business_days=("business_days", "median"),
+            on_time_rate=("on_time", "mean"),
+        )
+        .reset_index()
+    )
+    channel_summary["pending"] = (
+        channel_summary["requests"] - channel_summary["answered"]
+    )
+    channel_summary = channel_summary[
+        [
+            "channel",
+            "requests",
+            "answered",
+            "pending",
+            "median_business_days",
+            "on_time_rate",
+        ]
+    ]
+
+    # 2. Resumen por año y canal.
+    yearly_summary = (
+        df.groupby(["year", "channel"])
+        .agg(
+            requests=("channel", "size"),
+            answered=("answered", "sum"),
+            on_time_rate=("on_time", "mean"),
+        )
+        .reset_index()
+        .sort_values(["year", "channel"])
+    )
+    yearly_summary["pending"] = (
+        yearly_summary["requests"] - yearly_summary["answered"]
+    )
+    yearly_summary = yearly_summary[
+        ["year", "channel", "requests", "pending", "on_time_rate"]
+    ].reset_index(drop=True)
+
+    # 3. Resumen por dia de entrada, con los dos canales juntos.
+    dias = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+    entry_day_summary = (
+        df.groupby("day_name")
+        .agg(
+            requests=("day_name", "size"),
+            median_calendar_days=("calendar_days", "median"),
+            median_business_days=("business_days", "median"),
+        )
+        .reindex(dias)
+        .rename_axis("day_name")
+        .reset_index()
+    )
+
+    salida = Path("submission")
+    salida.mkdir(parents=True, exist_ok=True)
+    channel_summary.to_csv(salida / "channel_summary.csv", index=False)
+    yearly_summary.to_csv(salida / "yearly_summary.csv", index=False)
+    entry_day_summary.to_csv(salida / "entry_day_summary.csv", index=False)
+
+    return channel_summary, yearly_summary, entry_day_summary
